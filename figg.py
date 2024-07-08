@@ -352,7 +352,7 @@ def process(imdat):
         if (im in old_prc_ims) and (im in old_imdat):
             if (imdat[im] == old_imdat[im]):
                 # Don't go through processing; just use the old image
-                prc_ims[im] = old_prc_ims[im] 
+                prc_ims[im], prc_scales[im] = old_prc_ims[im], old_prc_scales[im]
                 continue
         # Otherwise, process the image
         check_keys(imdat, im) # Check if the right keys are there before proceeding 
