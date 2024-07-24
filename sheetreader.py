@@ -4,7 +4,7 @@ Converts any google sheet workbook into a dictionary compatible with figg.proces
 Original code written by Alex DelFranco
 Adapted by Bibi Hanselman
 Original dated 10 July 2024
-Updated 14 July 2024
+Updated 16 July 2024
 """
 
 import pandas as pd
@@ -13,84 +13,108 @@ import glob
 ######################
 
 def get_sheet_data(wb,name):
-  '''
-  Input: A google spreadsheet workbook and the name of the workbook sheet
-  Output: A dataframe of the data contained on the given sheet
-  Description: Pull data from a google sheet into a dataframe
-  '''
-  # Get data from the spreadsheet
-  sheet = wb.worksheet(name)
-  data = sheet.get_all_values()
-  df = pd.DataFrame(data)
+    """
+    Pulls data from a google sheet into a dataframe.
+    
+    Parameters
+    ----------
+    wb : gspread.spreadsheet.Spreadsheet
+        Google Sheets workbook instance, pulled from the desired url.
+    name : str
+        Name of the desired sheet in the workbook from which to pull data.
+
+    Returns
+    -------
+    df : pandas.DataFrame
+        Dataframe containing column data from the given sheet.
+
+    """
+    # Get data from the spreadsheet
+    sheet = wb.worksheet(name)
+    data = sheet.get_all_values()
+    df = pd.DataFrame(data)
   
-  # Arrange Pandas dataframe
-  df.columns = df.iloc[0]
-  df = df.drop(df.index[0])
-  df = df.reset_index()
+    # Arrange Pandas dataframe
+    df.columns = df.iloc[0]
+    df = df.drop(df.index[0])
+    df = df.reset_index()
   
-  # Return the dataframe
-  return df
+    # Return the dataframe
+    return df
 
 ######################
 
 def sheet_extract(wb,sheet,trim=False):
-  '''
-  Input: The name of a google spreadsheet workbook and the preferred mockup number
-  Output: A dictionary of data from that spreadsheet
-  Description: Extracts and returns a dictionary of data from a given google sheet
-  '''
-  # Get the data from the google sheet
-  dataframe = get_sheet_data(wb,sheet)
-
-  # Create a dictionary of dataframe column names with simple references
-  col_names = dataframe.columns.values.tolist()[1:]
-
-  # For each of the columns of data add the data to the dictionary
-  data = {}
-  for column in col_names:
-    # Covert each column to a list
-    coldat = dataframe[column].values.tolist()
-    # Trim empty values
-    while trim and '' in coldat: coldat.remove('')
-    # Add the column to the dictionary of data
-    data[column] = coldat
-
-  # Return the dictionary
-  return data
-
-######################
-
-def get_list(colname,wb,settings_sheet):
     """
-    Converts a single sheets column into a list with omitted header and empty values
-    
+    Extracts and returns a dictionary of data from a given google sheet.
+
     Parameters
     ----------
-    wb : ~gspread.spreadsheet.Spreadsheet
+    wb : gspread.spreadsheet.Spreadsheet
         Google Sheets workbook instance, pulled from the desired url.
-    settings_sheet : str
-        Name of settings sheet from which to pull column.
+    sheet : str
+        Name of the desired sheet in the workbook from which to pull data.
+    trim : bool, optional
+        Option to trim empty values. The default is False.
 
     Returns
     -------
-    dir_list : list
-        List of column values.
+    data : dict
+        Dictionary in which each column name is associated with column values
+        stored in lists.
 
     """
-    if colname in get_sheet_data(wb,settings_sheet):
-        col_list = get_sheet_data(wb,settings_sheet)[colname].tolist()
-        while '' in col_list: col_list.remove('')
-    else:
-        # If there's no hierarchy given, just return an empty list so it searches
-        # the root directory
-        col_list = []
-    return col_list
+    # Get the data from the google sheet
+    dataframe = get_sheet_data(wb,sheet)
+    
+    # Create a dictionary of dataframe column names with simple references
+    col_names = dataframe.columns.values.tolist()[1:]
+    
+    # For each of the columns of data add the data to the dictionary
+    data = {}
+    for column in col_names:
+        # Covert each column to a list
+        coldat = dataframe[column].values.tolist()
+        # Trim empty values
+        while trim and '' in coldat: coldat.remove('')
+        # Add the column to the dictionary of data
+        data[column] = coldat
+    
+    # Return the dictionary
+    return data
 
 ######################
 
 def global_setup(wb,settings_sheet):
-    '''
-    '''
+    """
+    Pulls global default values and custom subdirectory specs from a given
+    settings sheet.
+
+    Parameters
+    ----------
+    wb : gspread.spreadsheet.Spreadsheet
+        Google Sheets workbook instance, pulled from the desired url.
+    settings_sheet : str
+        Name of settings sheet from which to pull default values. Must contain the
+        following columns:
+            'Input': Parameters to which to assign a default value.
+            'Value': Corresponding default values for the 'Input' parameters.
+            'Subdirectory': Subdirectories for which custom specs are desired.
+            'Specs': list of columns, each representing a parameter, containing
+                default values for the corresponding subdirectories in the
+                'Subdirectory' column. Must include additional columns whose
+                names are the values in this column so that these columns can
+                be referenced by the code.
+
+    Returns
+    -------
+    defaults : dict
+        Dictionary that stores global defaults in parameter:value pairs.
+    specs : dict
+        Dictionary that stores custom specifications for each subdirectory in 
+        nested dictionaries.
+
+    """
     # Pull relevant dictionaries
     settings_dict = sheet_extract(wb,settings_sheet)
     defaults, specs = {}, {}
@@ -111,7 +135,11 @@ def global_setup(wb,settings_sheet):
         for spec in settings_dict['Specs']:
             # Don't add if an spec isn't specified
             if spec == '': continue
-            specs[subdir][spec] = settings_dict[spec][index]
+            try:
+                specs[subdir][spec] = settings_dict[spec][index]
+            except NameError:
+                print('Cannot pull spec values for ' + spec + 
+                      'because the column ' + spec + 'does not exist in your settings sheet!')
 
     # Return the defaults dictionary
     return defaults, specs
@@ -126,20 +154,16 @@ def addpaths(wb,im_data,namekey,settings_sheet):
 
     Parameters
     ----------
-    wb : ~gspread.spreadsheet.Spreadsheet
+    wb : gspread.spreadsheet.Spreadsheet
         Google Sheets workbook instance, pulled from the desired Sheets interface.
     im_data : dict
         Image dictionary, containing parameter values for a single image.
-    settings_sheet : str
-        Name of settings sheet from which to pull default values. If not None,
-        must include 'Hierarchy' column, which lists the image parameters,
-        in hierarchical order, to draw upon to construct the file path.
-
+    settings_sheet : dict
+        Dictionary of data pulled from a settings sheet.
     Returns
     -------
     im_data : dict
         Expanded dictionary with added key 'Path' for each image.
-
     """
     if settings_sheet is None:
         if 'File Name' in im_data:
@@ -158,7 +182,7 @@ def addpaths(wb,im_data,namekey,settings_sheet):
     else:
         # Get the list of ordered columns from which to obtain,
         # for each image, the subdirectory at each hierarchical tier.
-        lvls = get_list('Hierarchy',wb,settings_sheet)
+        lvls = settings_sheet['Hierarchy']
         
         # Declare file directory string
         filedir = ''
@@ -197,16 +221,33 @@ def addpaths(wb,im_data,namekey,settings_sheet):
     
 ######################
 
-def get_subdir(mockup,index,wb,settings_sheet):
+def get_subdir(mockup,index,settings_sheet):
     """
+    During the assignment of parameter values to an image dictionary, 
+    obtains subdirectory location of the file path for a given image index.
+
+    Parameters
+    ----------
+    mockup : dict
+        Dictionary of data from the image data sheet.
+    index : int
+        Index of desired image in the lists stored in the mockup dict.
+    wb : gspread.spreadsheet.Spreadsheet
+        Google Sheets workbook instance, pulled from the desired Sheets interface.
+    settings_sheet : dict
+        Dictionary of data pulled from a settings sheet.
+
+    Returns
+    -------
+    subdir : str
+        Subdirectory of the desired image.
     """
     subdir=''
-    for lvl in get_list("Hierarchy", wb, settings_sheet):
+    for lvl in settings_sheet['Hierarchy']:
         try:
             temp = mockup[lvl][index] + '/'
         except KeyError:
-            print('Your data sheet does not contain the parameter ' + lvl +
-                  'needed to create the subdirectory!')
+            print(f'Your data sheet does not contain the parameter {lvl} needed to create the subdirectory!')
         subdir += temp
     return subdir
     
@@ -222,7 +263,7 @@ def wb_to_dict(wb,sheet,add_paths=False,settings_sheet=None,namekey='Object',spl
 
   Parameters
   ----------
-  wb : ~gspread.spreadsheet.Spreadsheet
+  wb : gspread.spreadsheet.Spreadsheet
       Google Sheets workbook instance, pulled from the desired url.
   sheet : str
       Name of desired sheet within the workbook.
@@ -252,13 +293,14 @@ def wb_to_dict(wb,sheet,add_paths=False,settings_sheet=None,namekey='Object',spl
   
   # Pull general settings from the sheet, if such a sheet is given
   if settings_sheet is not None:
+      settings = sheet_extract(wb, settings_sheet, trim=True)
       defaults,specs = global_setup(wb,settings_sheet)
   else: defaults,specs = {},{}
 
   # Add image-specific information to a main dictionary
   images = {}
   
-  # Check if dicts should be split by a splitkey. If yes, conceive the children.
+  # Check if dicts should be split by a splitkey. If yes, conceive the children >:)
   if splitkey is not None:
       splitkeys = list(set(mockup[splitkey]))
       
@@ -270,10 +312,6 @@ def wb_to_dict(wb,sheet,add_paths=False,settings_sheet=None,namekey='Object',spl
     # For each image, loop through all the possible data inputs
     image = {}
     
-    # Get subdirectory for the image
-    if settings_sheet is not None: 
-        subdir = get_subdir(mockup, index, wb, settings_sheet)
-    
     for key in mockup:
       # If there is already an input, enter it in the dictionary
       if mockup[key][index] != '':
@@ -284,7 +322,7 @@ def wb_to_dict(wb,sheet,add_paths=False,settings_sheet=None,namekey='Object',spl
       # If it's not global, check if it's a subdirectory spec
       # This is not elegant. Return to later. 7/14/24
       elif settings_sheet is not None:
-        subdir = get_subdir(mockup, index, wb, settings_sheet)
+        subdir = get_subdir(mockup, index, settings)
         if subdir in specs:
           if key in specs[subdir]:
             image[key] = specs[subdir][key]
@@ -305,16 +343,17 @@ def wb_to_dict(wb,sheet,add_paths=False,settings_sheet=None,namekey='Object',spl
       if isinstance(image[key], str):   
           for sym in [',',':']:
               if sym in image[key]:
-                  image[key] = image[key].split(',')
+                  image[key] = image[key].split(sym)
       
-      # Convert checkbox 'TRUE' values to 'True' (bool)
+      # Convert checkbox values to bools
       if image[key] == 'TRUE': image[key] = True
+      elif image[key] == 'FALSE': image[key] = False
       
       # Finally, convert empty strings to NoneTypes
       if image[key] == '': image[key] = None
       
     # If add_paths is True, add paths to the image dictionary
-    if add_paths: addpaths(wb,image,namekey,settings_sheet)
+    if add_paths: addpaths(wb,image,namekey,settings)
     
     # Add the image dictionary to a master dictionary
     if splitkey is None:
