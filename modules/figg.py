@@ -6,7 +6,7 @@ according to user-defined parameters.
 Original code written by Alex DelFranco
 Adapted by Bibi Hanselman
 Original dated 7 July 2024
-Updated 19 July 2024
+Updated 28 July 2024
 """
 import numpy as np
 from tqdm import tqdm
@@ -15,10 +15,14 @@ from astropy.visualization.interval import ManualInterval
 from astropy.io import fits
 from astropy.convolution import Gaussian2DKernel
 from astropy.convolution import convolve
+#from astropy.stats import SigmaClip
 import astropy.stats as stats
 import scipy.stats
+# from photutils.background import Background2D, MedianBackground
 
+##############################################################
 ###################### ASINHLIN SCALING ######################
+##############################################################
 
 from astropy.visualization.stretch import BaseStretch
 
@@ -94,7 +98,9 @@ class AsinhLinStretch(BaseStretch):
         values = r1+r2+r3
         return values
 
+##############################################################
 ###################### IMAGE PROCESSING ######################
+##############################################################
 
 old_prc_ims = {}
 old_prc_scales = {}
@@ -186,7 +192,19 @@ def norm(imdat, custom_im=None):
     mode = scipy.stats.mode(im,axis=None,nan_policy='omit')[0]
     im = im - mode
     im[im < 0] = np.nan
-  
+
+  # Find the median of the background by sigma clipping
+  if imdat['Clipping']:
+    bkg = stats.sigma_clip(im,imdat['σ'])
+    im = im - np.ma.median(bkg)
+    im[im < 0] = 0
+    # sigma_clip = SigmaClip(sigma=imdat['σ'])
+    # bkg_estimator = MedianBackground()
+    # bkg = Background2D(im, imdat['Box Size'],
+    #                    sigma_clip=sigma_clip, bkg_estimator=bkg_estimator,
+    #                    exclude_percentile=20)
+    # im = im - bkg.background
+    
   # Normalize the image
   if imdat['Normalization']:
     bounds = imdat['N-Range'] #.split(':')
@@ -194,11 +212,6 @@ def norm(imdat, custom_im=None):
     im -= np.nanpercentile(im,float(bounds[0]))
     # Normalize the image to the upper percentile
     norm_im = im/np.nanpercentile(im,float(bounds[1]))
-
-  # Find the median of the background by sigma clipping
-  if imdat['Clipping']:
-    bkg = stats.sigma_clip(norm_im,imdat['σ'])
-    norm_im = norm_im - np.ma.median(bkg)
 
   # Check if we want to smooth
   if imdat['Smoothing']:
@@ -224,6 +237,7 @@ def norm(imdat, custom_im=None):
   
   if 'Nan To Num' in imdat:
     if imdat['Nan To Num']: norm_im = np.nan_to_num(norm_im)
+
   # Return the final processed image and its scaling
   return norm_im, normalize
 
@@ -237,16 +251,14 @@ def check_keys(imdt, im):
     # First, check the required keys
     imdat = imdt[im]
     keys = [
-        'Path', 'Cube Slice', 'Dimensions', 'Mode Subtract',
-        'Normalization', 'Clipping', 'Smoothing', 'Colorbar', 'Scaling'
+        'Mode Subtract',
+        'Normalization',
+        'Clipping',
+        'Smoothing',
+        'Colorbar',
+        'Scaling'
         ]
     missingkeys = [key for key in keys if key not in imdat]
-    
-    # Check for the special case of 'Cube Slice'
-    if 'Path' in imdat:
-        im = fits.getdata(imdat['Path'])
-        if (len(im.shape) != 2) and ('Cube Slice' not in imdat):
-            missingkeys.append('Cube Slice')
     
     # Now check for the 'optional' keys
     # Not an elegant way to do this. Will figure out something better later. 7/8/24
@@ -277,9 +289,7 @@ def check_keys(imdt, im):
 
     
     if missingkeys != []:
-        raise KeyError('Your dictionary for ' + im + ' is missing the following keys: ' 
-                       + str(missingkeys) + 
-                       '. Please refer to the figg.process() docstring for more info.')
+        raise KeyError(f"Your dictionary for {imdat['Object']} is missing the following keys: {missingkeys}. Please refer to the figg.process() docstring for more info.")
 
 ######################
 
