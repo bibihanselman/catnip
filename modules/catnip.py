@@ -1,15 +1,23 @@
+'''
+CATNIP: Comparative Analysis Tool for Normalized Imagery and Profiles. (Working name)
+Processes multiwavelength disk images using FIGG, and computes radial
+and azimuthal profiles according to user input.
+Original written by Cat Sarosi, 2022
+Modified by Bibi Hanselman
+Created 30 July 2024
+Updated 2 August 2024
+'''
+
 import bettermoments as bm
 from astropy.io import fits
 import numpy as np
 import skimage
 import skimage.transform
 import cv2
-import imutils
 import matplotlib.pyplot as plt
 import math
 import seaborn as sb
 import os
-import glob as glob
 import pandas as pd
 import astropy.units as u
 import photutils.aperture as phot
@@ -20,30 +28,135 @@ from matplotlib.ticker import MultipleLocator
 import figg
 
 class AstroObject():
+    '''
+    Class to represent a disk to analyze. Contains attributes for individual 
+    image information (AstroImage instances), disk properties, and multiline 
+    plot display settings.
+    
+    
+    Attributes
+    ----------
+    name : str
+        Disk name.
+    scattered_light: AstroImage
+        AstroImage instance for scattered light data.
+    continuum: AstroImage
+        AstroImage instance for mm continuum data.
+    line: AstroImage
+        AstroImage instance for line emission data.
+    imlist: list
+        List containing all applicable AstroImages.
+    img_data_dict: dict
+        Contains unprocessed image arrays for each AstroImage object.
+    prc_ims: dict
+        Contains FIGG-processed image arrays for each AstroImage object.
+    prc_scales: dict
+        Contains ImageNormalize instances for each AstroImage object, determining
+        the colorbar stretch.
+    plot_types: list
+        List of strings denoting the types of panels to plot.
+    rad_lines: bool
+        Whether to overlay ray annotations on disk images denoting the azimuthal
+        location of radial profiles.
+    az_rings: bool
+        Whether to overlay ring annotations on disk images denoting the radial
+        location of azimuthal profiles.
+    line_cmap: str
+        Name of matplotlib.colormap.Colormap with which to color ray annotations.
+    ring_cmap: str
+        Name of matplotlib.colormap.Colormap with which to color ring annotations.
+    column_width: float
+        Width, in inches, of each column in the multiline plot.
+    row_ht: float
+        Height, in inches, of each row in the multiline plot.
+    img_mult: float
+        Height multiplier for imagery panels. The height of these panels is
+        row_ht multiplied by this value.
+    force_simple: bool
+        Whether to always produce "simple" (single-column) plots regardless of
+        the number of panels. By default, make_plot_multiline() automatically creates
+        a "complex" (two-column) layout when there are more than 3 panels. Setting
+        this value to True forgoes this check.
+    au_scale: float
+        Width of au scalebar in au. If set to 0, a scalebar is not plotted.
+    distance: float
+        Distance of the disk in pc.
+    PAlist : list
+        PAs for which to plot radial profiles for each image in the multiline
+        plot.
+     
+        
+    Methods
+    -------
+    update(display_dict):
+        Sets values for display-related attributes.
+    plot_im(im, im_ax, subfig):
+        Helper function to plot an image.
+    check_plot_types():
+        Check if the inputted plot types (elements of plot_types) are compatible
+        with the panel options in make_plot_multline().
+    partition_list(lst):
+        Returns all possible ways to partition the elements in a list into 2 
+        separate lists. Used to determine all possible panel configurations
+        in the complex layout.
+    optimize_cols(lst):
+        In the complex layout, chooses the column pairing that minimizes the
+        difference in heights between the two columns.
+    make_plot_multiline():
+        Generates a multipanel plot displaying disk imagery and/or intensity
+        profiles for the disk. Types of panels, their order, and the choice of
+        column layout are all user-controlled.
+    
+    History
+    -------
+    Original author: Kate Follette in IDL.
+    Revised by Cat Sarosi (2022).
+    Revised further by Bibi Hanselman (2024). New display-related attributes and
+    an overhaul of the axis-plotting procedure to vastly extend flexibility/ 
+    user control and improve the aesthetic quality of the final graphic. New
+    plotting options (ex. projected imagery) to enhance the utility of the tool,
+    with support for custom inputs for each disk in the user interface to cover
+    many possible disk image inputs. Also incorporated processing code from
+    the figg module during initialization to process the images according to
+    user-defined parameters.
+    '''
     def __init__(self, name, image_dict, display_dict):
-
+        '''
+        Initialize required disk attributes and prepare plots (deprojected images,
+        intensity profiles) for each disk image.
+        
+        Parameters
+        ----------
+        name : str
+            Disk name.
+        image_dict : dict
+            Dict pulled from sheets interface that contains values for
+            each of the instantiated image (AstroImage) attributes.
+        display_dict : dict
+            Dict pulled from sheets interface that contains values for
+            each of the disk (AstroObject) attributes.
+            
+        '''
         self.name = name
 
         # Instantiate AstroImages
         self.scattered_light = AstroImage(image_dict['scattered light']) if 'scattered light' in image_dict else None
-        self.sum_mm = AstroImage(image_dict['continuum']) if 'continuum' in image_dict else None
+        self.continuum = AstroImage(image_dict['continuum']) if 'continuum' in image_dict else None
         self.line = AstroImage(image_dict['line']) if 'line' in image_dict else None
 
-        self.imlist = [im for im in [self.scattered_light,self.sum_mm,self.line] if im is not None]
+        self.imlist = [im for im in [self.scattered_light,self.continuum,self.line] if im is not None]
 
         # Assign certain disk-wide parameters to the images
         for im in self.imlist:
             im.incl = display_dict['Inclination']
             im.PA = display_dict['PA']
-
+            
             im.PAs = np.arange(0,360,display_dict['PA Step']).tolist()
             im.PAs.append(im.PA)
             im.PAs.append(im.PA + 90)
 
             im.radlist = [str(display_dict['Radius List'])] if isinstance(display_dict['Radius List'],int) else display_dict['Radius List']
             if im.radlist is None: im.radlist = []
-            im.PAlist = [str(display_dict['PA List'])] if isinstance(display_dict['PA List'],int) else display_dict['PA List']
-            if im.PAlist is None: im.PAlist = []
 
         # Set display info
         self.update(display_dict)
@@ -77,14 +190,30 @@ class AstroObject():
         self.row_ht = display_dict['Row Height']
         self.img_mult = display_dict['Image Multiplier']
         self.force_simple = display_dict['Force Simple']
-        self.au_scale = display_dict['AU Scale']
+        self.au_scale = abs(display_dict['AU Scale'])
         self.distance = display_dict['Distance']
+        self.PAlist = display_dict['PA List']
 
 #############################################################################
 
     def plot_im(self, im, im_ax, subfig):
         '''
-        Lil' helper function to plot an image.
+        Helper function to plot image data.
+
+        Parameters
+        ----------
+        im : AstroImage
+            Image instance containing the data to be displayed, along with
+            relevant cropping parameters.
+        im_ax : matplotlib.axes.Axes
+            Axis on which to plot the image (corresponds to imagery type).
+        subfig : matplotlib.figure.SubFigure
+            Subfigure containing the desired axis (deprojected or "original").
+
+        Returns
+        -------
+        None.
+
         '''
         bounds = {}
         boundsize = int(round(self.boundsize/im.pixscale))
@@ -128,9 +257,9 @@ class AstroObject():
 
         # Plot rays at rad profile PAs
         if self.rad_lines:
-            for i, PA in enumerate(im.PAlist):
+            for i, PA in enumerate(self.PAlist):
                 PA = int(PA)
-                im_ax.plot([im.xcen, im.xcen + math.sqrt(2) * boundsize * -math.cos(math.radians(PA))], [im.ycen, im.ycen + math.sqrt(2) * boundsize * math.sin(math.radians(PA))],
+                im_ax.plot([im.xcen, im.xcen + math.sqrt(2) * boundsize * math.cos(math.radians(PA))], [im.ycen, im.ycen + math.sqrt(2) * boundsize * math.sin(math.radians(PA))],
                           color=self.rad_colors[i], lw=3, ls='--', alpha=0.5)
 
         # Create axis text
@@ -141,11 +270,12 @@ class AstroObject():
             im_ax.text(0.05,0.9,f'{im.band}', color='white', fontsize = 8*self.img_mult, transform=im_ax.transAxes)
 
         # Make a scalebar
-        pix_dist = im.pixscale / 1000 * self.distance # arcsec / pixel * parsec ~= au / pixel
-        bar_length = (self.au_scale / pix_dist) / (2 * boundsize) # bar pixel width / total pixel width
-        im_ax.plot([0.05,0.05+bar_length],[0.07,0.07],
-                  lw=2*self.img_mult,color='white', transform=im_ax.transAxes)
-        im_ax.text(0.04,0.1,f'{self.au_scale} AU',color='white',fontsize=6*self.img_mult,ha='left',transform=im_ax.transAxes)
+        if self.au_scale != 0:
+            pix_dist = im.pixscale / 1000 * self.distance # arcsec / pixel * parsec ~= au / pixel
+            bar_length = (self.au_scale / pix_dist) / (2 * boundsize) # bar pixel width / total pixel width
+            im_ax.plot([0.05,0.05+bar_length],[0.07,0.07],
+                      lw=2*self.img_mult,color='white', transform=im_ax.transAxes)
+            im_ax.text(0.04,0.1,f'{self.au_scale} AU',color='white',fontsize=6*self.img_mult,ha='left',transform=im_ax.transAxes)
 
         # Set title
         im_ax.set_title(im.imagery_source + " " + im_type + "\n" + im.date)
@@ -156,7 +286,7 @@ class AstroObject():
         '''
         Check if the inputted plot types are valid. The supported types and corresponding strings are:
             'avgrad': Azimuthally averaged radial profiles.
-            'rad': Radial profiles.
+            'rad': Radial profiles at given PAs.
             'az': Azimuthal profiles.
             'rad_az': Polar projections.
             'deprj_ims': Deprojected imagery.
@@ -178,9 +308,7 @@ class AstroObject():
             print(f"No radlists were given for any {self.name} imagery. Removing 'az' from astro_objects['{self.name}'].plot_types.")
 
         # Check if 'rad' should be removed
-        # Get longest PA list and length
-        PAlists = [im.PAlist for im in self.imlist]
-        self.max_PAlist_len = len(max(PAlists, key=len))
+        self.max_PAlist_len = len(self.PAlist)
         # If the longest length is 0...
         if 'rad' in self.plot_types and self.max_PAlist_len == 0:
             del self.plot_types[self.plot_types.index('rad')]
@@ -193,7 +321,20 @@ class AstroObject():
 
     def partition_list(self, lst):
         '''
-        Takes a list of elements and returns all possible ways to partition the elements into 2 separate lists. (Thanks Gemini! <3)
+        Takes a list of elements and returns all possible ways to partition the
+        elements into 2 separate lists.
+        (Thanks Gemini! <3 Even though your ads suck)
+        
+        Parameters
+        ----------
+        lst: list
+            List to partition. (In this context, a list of subfigure tuples.)
+        
+        Returns
+        -------
+        result: list
+            List containing all possible partitions of lst. Each element (tuple)
+            is a unique partition.
         '''
         result = []
         n = len(lst)
@@ -214,6 +355,23 @@ class AstroObject():
 #############################################################################
 
     def optimize_cols(self, lst):
+        '''
+        Chooses the column pairing that minimizes the difference in heights
+        between the two columns. (This was NOT worth the pain of planning...)
+
+        Parameters
+        ----------
+        lst : list
+            List of tuples. Each tuple represents a subfigure, storing the plot
+            type (str) and subfigure height (float).
+
+        Returns
+        -------
+        best_pair : list
+            The partition of unzipped tuples for which the difference in
+            the sums of the height tuples is the minimum for all partitions of lst.
+
+        '''
         pairs = self.partition_list(lst)
         mindiff = len(self.hts)
         for pair in pairs:
@@ -234,19 +392,15 @@ class AstroObject():
 #############################################################################
 
     def make_plot_multiline(self):
-
         '''
-        profiles
-
-        PURPOSE:
-            #Calculate radial profile for a  disk at given PAs
-
-        INPUTS:
-           #filename:[str] description
-
-        AUTHOR:
-            Original in IDL: Kate Follette
-            Revised in Python: Catherine Sarosi Nov 30, 2022
+        Generates a multipanel plot displaying disk imagery and/or intensity
+        profiles for the disk. Types of panels, their order, and the choice of
+        column layout are all user-controlled.
+        
+        The plot_types attribute determines the types of panels to display, and
+        in what order (for two-column plots, order is preserved only within columns
+        due to the optimization code). Refer to the check_plot_types docstring
+        for supported types.
         '''
         # First, check if self.plot_types contains any invalid types
         self.check_plot_types()
@@ -255,7 +409,7 @@ class AstroObject():
         self.n_rows = len(self.plot_types)
 
         # Get number of heatmaps
-        heatmap_bools = [im.plotheatmap for im in self.imlist]
+        heatmap_bools = [im.plot_heatmap for im in self.imlist]
         self.n_heatmaps = heatmap_bools.count(True)
 
         # Get beautiful colors for rings and lines :)
@@ -299,7 +453,7 @@ class AstroObject():
 
         # Create the figure and GridSpec grid(s)
         # Complex (2-column)
-        if (self.max_radlist_len > 1 or self.n_heatmaps > 1) and not self.force_simple:
+        if self.n_rows > 3 and not self.force_simple:
             self.complex_plot = True
             # Find the best column pairing!
             self.best_pair = self.optimize_cols(list(zip(self.plot_types,self.hts)))
@@ -404,7 +558,6 @@ class AstroObject():
 
         # Plot the images!
         for index, im in enumerate(self.imlist):
-            nPAs = len(im.PAs) - 2
 
             # IMAGE PLOT CODE
             for subfig in [plot for plot in self.plot_types if 'ims' in plot]:
@@ -427,7 +580,7 @@ class AstroObject():
             if 'rad' in self.plot_types:
                 for i in range(self.max_PAlist_len):
                     rad_ax = axs['rad'][i]
-                    rad_data = im.rad_plot_data[im.rad_plot_data['PA'] == im.PAlist[i]]
+                    rad_data = im.rad_plot_data[im.rad_plot_data['PA'] == int(self.PAlist[i])]
                     sb.lineplot(data = rad_data,
                                 x = 'xaxis', y='flux',  marker = 'o', color = im.color,
                                 label = im.imagery_type, ax=rad_ax)
@@ -436,11 +589,11 @@ class AstroObject():
                     rad_ax.yaxis.set_minor_locator(MultipleLocator(0.1))
                     rad_ax.grid(True)
                     if self.rad_lines:
-                        rad_ax.text(0.5,1.1,f'PA = {im.PAlist[i]} deg',
+                        rad_ax.text(0.5,1.1,f'PA = {self.PAlist[i]} deg',
                                    horizontalalignment = 'center', verticalalignment='top',
                                    color = self.rad_colors[i], transform=rad_ax.transAxes)
                         #was originally just text, but I centered it, so it's basically a suptitle... might change to that. 7/29/24
-                    else: rad_ax.set_title(f'PA = {im.PAlist[i]} deg')
+                    else: rad_ax.set_title(f'PA = {self.PAlist[i]} deg')
                     rad_ax.get_legend().remove()
 
             #AZ PLOT CODE
@@ -453,13 +606,12 @@ class AstroObject():
                                 x = 'PA', y='flux',  marker = 'o', color = im.color,
                                 label = im.imagery_type, ax=az_ax)
                     #locator_params isn't working for some reason, so setting the ticks manually... 7/19/24
-                    az_ax.set_xticks(np.arange(0,nPAs,nPAs/8))
-                    az_ax.set_xticklabels(np.arange(0,360,45))
-                    az_ax.xaxis.set_minor_locator(MultipleLocator(3))
+                    az_ax.set_xticks(np.arange(0,360,45))
+                    az_ax.xaxis.set_minor_locator(MultipleLocator(15))
                     az_ax.yaxis.set_minor_locator(MultipleLocator(0.1))
                     az_ax.grid(True)
                     # set title, axs
-                    az_ax.set(xlabel='PA (deg)', ylabel= 'Normalized Intensity', xlim=(-0.1, nPAs - 0.9), ylim = (0,1))
+                    az_ax.set(xlabel='PA (deg)', ylabel= 'Normalized Intensity', xlim=(-0.1, 354.9), ylim = (0,1))
                     if self.az_rings:
                         az_ax.text(0.5,1.1,f'Radius = {im.radlist[i]} mas',
                                    horizontalalignment = 'center', verticalalignment='top',
@@ -469,20 +621,22 @@ class AstroObject():
                     az_ax.get_legend().remove()
 
             # HEATMAPS
-            if 'rad_az' in self.plot_types and im.plotheatmap:
+            if 'rad_az' in self.plot_types and im.plot_heatmap:
                 rad_az_ax = axs['rad_az'] if isinstance(axs['rad_az'], mpl.axes.Axes) else axs['rad_az'][index]
-                im.radial_profiles['xaxis'] = im.radial_profiles['xaxis'] # <- huh? 7/16/24
                 im.rad_az_plot_data = im.radial_profiles.drop([str(im.PA),str(im.PA+90), 'mean'], axis = 1).astype('float')
                 im.rad_az_plot_data['xaxis'] = ([str(round(float(val))) for val in im.rad_az_plot_data['xaxis'].values])
                 im.rad_az_plot_data = im.rad_az_plot_data.set_index('xaxis')
                 sb.heatmap(im.rad_az_plot_data/np.nanmax(im.rad_az_plot_data),
                           cmap = im.cmap, cbar_kws= {'pad':0.001, 'label':'Normalized Intensity'},
                           norm = self.prc_scales[im.imagery_type], ax = rad_az_ax)
+
                 rad_az_ax.locator_params(axis='both', nbins=8)
+                nPAs = len(im.PAs) - 2
                 rad_az_ax.set_xticks(np.arange(0,nPAs,nPAs/8))
                 rad_az_ax.set_xticklabels(np.arange(0,360,45))
                 rad_az_ax.xaxis.set_minor_locator(MultipleLocator(3))
                 rad_az_ax.tick_params(axis='both', labelrotation=0)
+
                 rad_az_ax.set(title = im.imagery_source + " " + im.imagery_type, xlabel='PA (deg)', ylabel= 'Radius (mas)')
 
         for plot in self.plot_types:
@@ -493,46 +647,168 @@ class AstroObject():
 #############################################################
 
 class AstroImage():
+    '''
+    Class to represent a disk image. Contains required parameters to process,
+    deproject, construct profiles, and eventually produce plots for the image.
+    
+    
+    Attributes
+    ----------
+    obj : str
+        Disk name.
+    imagery_type : str
+        Image tracer (scattered light, mm continuum, line emission).
+    imagery_source : str
+        Instrument with which the image was taken.
+    path : str
+        Path of fits file for the image.
+    trim : float or None
+        Amount by which to trim line emission data. Irrelevant for now (v1.0).
+    r2: bool
+        Whether to r2-scale the images. Recommended for scattered light imagery.
+    stokes_component: bool
+        Stokes component of the fits file to use for polarimetric data.
+    override_center: list or None
+        Center coordinates to manually set for an image if the center information
+        from the header is incorrect. Usually needed for ALMA data.
+    plot_heatmap : bool
+        Whether to plot a polar projection of the imagery in the multiline plot.
+    interval : list
+        Colorbar bounds.
+    asinh_a : float
+        Parameter for asinh scaling. Ranges from 0 to 1.
+    n_start : int or None
+        Radius slice during profile creation at which to begin edge-checking.
+        (The width of a radius slice is px_bin, which is the resolution divided
+         by the pixel scale. This value represents the minimum resolvable distance
+         in pixels.)
+    n_deltas : int
+        Number of previous radial slices to check for edge-finding at each slice.
+        The delta in maximum median intensity among the PAs is evaluated for each
+        of these slices. The radial profile generation loop will break if all
+        [n_deltas] maxima are less than delta_lim.
+    delta_lim : float
+        Intensity delta threshold for edge-finding.
+    show_deltas : bool
+        Whether to print deltas for each iteration of the radial profile generation
+        loop in the log.
+    cmap : str
+        Name of cmap to use for image and polar map plotting for this AstroImage
+        in the multipanel plot.
+    color : str
+        Name of color to use for profile lineplots for this AstroImage in the
+        multipanel plot.
+    fits_table : fits.hdu.hdulist.HDUList
+        Fits file data, opened from the fits file path.
+    header : fits.header.Header
+        Fits file header information.
+    PA : int
+        Position angle of the disk.
+    incl : int
+        Inclination of the disk.
+    PAs : list
+        List of PAs to loop through during radial and azimuthal profile generation.
+    radlist : list
+        Radii for which to generate and plot azimuthal profiles in the multiline plot.
+    
+    
+    Methods
+    -------
+    strip_header():
+        Extracts relevant information about the disk image from the fits file
+        header.
+    deproject(r2=False):
+        Deprojects the image data using PA and incl.
+    pa_rotate():
+        Rotates image by each PA in PAs and returns a list of all rotated images
+        for radial and azimuthal profile generation.
+    make_profiles():
+        Constructs radial and azimuthal profiles for the image.
+    plot_prep():
+        Maps radial and azimuthal profile data into a format suitable for 
+        plotting in AstroObject.make_plot_multiline() by melting the dataframes
+        produced in make_profiles().
+    profiles():
+        Wrapper function that calls all the above functions (except for
+        strip_header()) in order. Called by AstroObject.__init__().
+    
+    History
+    -------
+    Original author: Kate Follette in IDL.
+    Revised by Cat Sarosi (2022).
+    Revised further by Bibi Hanselman (2024). Added descriptive log messages,
+    cleaned up unnecessary code, further wrangled the data in light of changes
+    to AstroObject.make_plot_multiline, and removed individual image plotting
+    functionality as it's now effectively covered among the possible multiline
+    plot display options.
+    '''
     def __init__(self,image_dict=None):
+        '''
+        Initializes required image attributes for deprojection and profile
+        creation.
+
+        Parameters
+        ----------
+        image_dict : dict, optional
+            Dict pulled from sheets interface that contains values for
+            each of the image attributes. The default is None.
+
+        '''
         if image_dict:
-            #Set a path to the data directory
+            # Essential image information
             self.obj = image_dict['Object']
             self.imagery_type = image_dict['Tracer']
             self.imagery_source = image_dict['Source']
             self.path = image_dict['Path']
-
-            self.trim = np.nan if image_dict['trim'] == '' else image_dict['trim']
+            
+            # Tracer-specific information
+            self.trim = np.nan if image_dict['Trim'] == None else image_dict['Trim']
             self.r2 = image_dict['r2']
-            self.stokes_component = image_dict['stokes_component']
-
-            self.deproject_data = image_dict['deproject']
-
-            self.override_center = [int(i) for i in image_dict['override_center']] if image_dict['override_center'] is not None else None
-
-            self.plotheatmap = image_dict['Plot Heatmap']
-
+            self.stokes_component = image_dict['Stokes Component']
+            
+            # Custom center coordinates
+            self.override_center = [int(i) for i in image_dict['Override Center']] if image_dict['Override Center'] is not None else None
+            
+            # Option to plot heatmap (polar map)
+            self.plot_heatmap = image_dict['Plot Heatmap']
+            
+            # Scaling considerations
             self.interval = image_dict["CB-Range"] #image_dict['perc_interval']
             self.asinh_a = image_dict['Scale Parameter'] #image_dict['asinh_a']
-
-            self.n_start = image_dict['n_start'] if image_dict['n_start'] is not None else image_dict['n_deltas']
-            self.n_deltas = image_dict['n_deltas']
-            self.delta_lim = image_dict['delta_lim']
-            self.show_deltas = image_dict['show_deltas']
-
-            self.cmap = image_dict['cmap']
-            self.color = image_dict['color']
-
+            
+            # For edge-finding portion of make_profiles() function.
+            # Might refine this code in the future. 7/30/24
+            self.n_start = image_dict['N Start'] if image_dict['N Start'] is not None else image_dict['N Deltas']
+            self.n_deltas = image_dict['N Deltas']
+            self.delta_lim = image_dict['Delta Lim']
+            self.show_deltas = image_dict['Show Deltas']
+            
+            # Color settings
+            self.cmap = image_dict['CMap']
+            self.color = image_dict['Color']
+            
+            # Fits file information
             self.fits_table = fits.open(image_dict['Path'])
             self.header = self.fits_table[0].header
 
-            # Open file and get required information from the header. Used primarily to get value for im.data, which is passed to figg.process.
+            # Open file and get required information from the header.
+            # Called first to get value for im.data, which is passed to figg.process.
             self.strip_header()
 
-            self.or_im = self.data
-            self.or_ycen = self.ycen
 ##############################################################################
 
     def __copy__(self):
+        '''
+        Copies this AstroImage while reassigning the data and ycen attributes
+        to their values before deprojection. Used to plot original (projected)
+        imagery.
+
+        Returns
+        -------
+        or_im : AstroImage
+            Identical image object, but containing projected data.
+
+        '''
         or_im = AstroImage()
         or_im.__dict__.update(self.__dict__)
         or_im.data = self.or_im
@@ -543,6 +819,9 @@ class AstroImage():
 
 ##############################################################################
     def strip_header(self):
+        '''
+        Extracts relevant information about the disk image from the fits file header.
+        '''
         header = self.fits_table[0].header
 
         # If the source was ALMA...
@@ -582,19 +861,20 @@ class AstroImage():
                 #conversion to float 64 required for image rotation later
                 #https://github.com/quatrope/astroalign/issues/70
                 self.data = skimage.util.img_as_float64(self.fits_table[0].data[0,0,:,:])
-
+            
+            # Deal with line data later...
             if self.imagery_type == 'line':
                 cube_data = self.fits_table[0].data
                 if not math.isnan(self.trim):
                     trim = self.trim
                     data_trimmed = cube_data[0,trim[0][0]:trim[0][1],trim[1][0]:trim[1][1],trim[1][0]:trim[1][1]]
                     trimmed_path = self.path.split('.fits')[0] + '_trimmed.fits'
-                    fits.writeto(trimmed_path, data_trimmed, header = file[0].header, overwrite = True)
+                    #fits.writeto(trimmed_path, data_trimmed, header = file[0].header, overwrite = True)
                     newpath = trimmed_path
                 else:
                     newpath = self.path
-                if not os.path.exists(newpath.split('.fits')[0] + '_M8.fits'):
-                    moments = bm.collapse_zeroth(velax=velax, data=masked_data, rms=rms)
+                if not os.path.exists(newpath.split('.fits')[0] + '_M8.fits'): pass
+                    #moments = bm.collapse_zeroth(velax=velax, data=masked_data, rms=rms)
                 new_file = fits.open(newpath.split('.fits')[0] + '_M8.fits')
                 #conversion to float 64 required for image rotation later
                 #https://github.com/quatrope/astroalign/issues/70
@@ -625,12 +905,19 @@ class AstroImage():
 
         if self.override_center is not None:
             self.xcen,self.ycen = self.override_center[0], self.override_center[1]
+            print('Overrode center')
 ##############################################################################
     def deproject(self,r2=False):
+        '''
+        Deprojects the image data using disk PA and incl.
+        
+        Parameters
+        ----------
+        r2 : bool, optional
+            Whether to r2-scale the data. The default is False.
+        
+        '''
         ndimx,ndimy = self.data.shape[1],self.data.shape[0]
-        halfx = int(round(self.xcen))
-        halfy = int(round(self.ycen))
-        half_px_bin = 1 #int(self.px_bin//2)
 
         M = cv2.getRotationMatrix2D((self.xcen,self.ycen), self.PA - 90, 1.0)
 
@@ -647,7 +934,6 @@ class AstroImage():
         ndimy2 = im_rebin.shape[0]
         if self.override_center is not None:
             ycen2 = int(round((ndimy2/ndimy)*self.ycen))
-            print('Overrode center')
         else:
             ycen2 = ndimy2/2
 
@@ -672,17 +958,8 @@ class AstroImage():
 ##############################################################################
     def pa_rotate(self):
         '''
-        pa_rotate
-
-        PURPOSE:
-            #loop through PAs and rotate image so that that PA value is directly L/R
-
-        INPUTS:
-           #filename:[str] description
-
-        AUTHOR:
-            Original in IDL: Kate Follette
-            Revised in Python: Catherine Sarosi Nov 30, 2022
+        Rotates image by each PA in PAs and returns a list of all rotated images
+        (file_rot) for radial and azimuthal profile generation.
         '''
         print('Rotating over PAs...')
         shape = (self.data.shape[0],self.data.shape[1])
@@ -702,22 +979,10 @@ class AstroImage():
         self.file_rot = file_rot
 ##############################################################################
     def make_profiles(self):
-
         '''
-        make_profiles
-
-        PURPOSE:
-            #Calculate radial profile for a disk at given PAs
-
-        INPUTS:
-           #filename:[str] description
-
-        AUTHOR:
-            Original in IDL: Kate Follette
-            Revised in Python: Catherine Sarosi Nov 30, 2022
+        Constructs radial and azimuthal profiles for the image.
         '''
         radial_profiles = pd.DataFrame(columns=[str(PA) for PA in self.PAs])
-        azimuthal_angles = np.arange(0,360)
         azimuthal_profiles = pd.DataFrame(columns=[str(PA) for PA in self.PAs])
         shape = self.file_rot.shape[1:]
         halfx = int(shape[1]/2)
@@ -727,7 +992,8 @@ class AstroImage():
         PA_mask = np.ones(shape, dtype=bool)
         PA_mask[halfy:shape[0],halfx-half_px_bin:halfx+half_px_bin+1] = False
 
-        print('Generating radial profile...')
+        print('Generating radial profiles...')
+        # Radial profile loop
         for radcut in np.arange(0,(shape[0]/2/self.n_deltas)):
             r_in,r_out = (radcut * self.px_bin, (radcut+1) * self.px_bin)
             ap = (phot.CircularAnnulus([self.xcen,self.ycen], r_in, r_out)) if radcut > 0 else(phot.CircularAperture([self.xcen,self.ycen],r_out))
@@ -757,8 +1023,8 @@ class AstroImage():
                     break
 
         print('Generating azimuthal profiles...')
+        # Az profile loop
         for panum,pa in np.ndenumerate(self.PAs):
-            # for rad in np.arange(self.radstep,radcut*self.pixscale*self.px_bin,self.radstep, dtype=int).tolist():
             for rad in self.radlist:
                 rad = int(rad)
                 r_in,r_out = (int(rad/self.pixscale - half_px_bin),int(rad/self.pixscale + half_px_bin + 1))
@@ -773,17 +1039,9 @@ class AstroImage():
 ##############################################################################
     def plot_prep(self):
         '''
-        profiles
-
-        PURPOSE:
-            #Calculate radial profile for a disk at given PAs
-
-        INPUTS:
-           #filename:[str] description
-
-        AUTHOR:
-            Original in IDL: Kate Follette
-            Revised in Python: Catherine Sarosi Nov 30, 2022
+        Maps radial and azimuthal profile data into a format suitable for 
+        plotting in AstroObject.make_plot_multiline() by melting the dataframes
+        produced in make_profiles().
         '''
         self.auto_bound = self.n_cuts * self.px_bin
         self.bounds = {}
@@ -795,6 +1053,12 @@ class AstroImage():
         self.radial_profiles['mean'] = self.radial_profiles.loc[:, ~self.radial_profiles.columns.isin([str(self.PA), str(self.PA+90),'xaxis'])].mean(axis= 1,skipna=True)
         rad_plot_data = pd.melt(self.radial_profiles, id_vars=['xaxis'], var_name='PA', value_name = 'flux')
         rad_plot_data['flux'] = rad_plot_data['flux']/np.nanmax(rad_plot_data['flux'])
+        
+        # Adjust the PAs so that they're oriented correctly (CCW)
+        PAs = rad_plot_data['PA'].drop(rad_plot_data[rad_plot_data['PA'] == 'mean'].index).astype(int)
+        PAs = 180 - PAs
+        PAs[PAs < 0] += 360
+        rad_plot_data['PA'].loc[rad_plot_data['PA'] != 'mean'] = PAs
 
         self.azimuthal_profiles.loc[-1] = self.radial_profiles.loc[:, ~self.radial_profiles.columns.isin([str(self.PA), str(self.PA+90),'xaxis'])].median(axis= 0,skipna=True)
         self.azimuthal_profiles.rename(index={-1:'median'},inplace=True)
@@ -802,36 +1066,27 @@ class AstroImage():
         az_plot_data = pd.melt(self.azimuthal_profiles, id_vars=['Radius (mas)'], var_name='PA', value_name = 'flux')
         az_plot_data['flux'] = az_plot_data['flux']/np.nanmax(az_plot_data['flux'])
 
+        # Adjust the PAs so that they're oriented correctly (CCW)
+        PAs = az_plot_data['PA'].astype(int)
+        PAs = 180 - PAs
+        PAs[PAs < 0] += 360
+        az_plot_data['PA'] = PAs
 
         self.rad_plot_data = rad_plot_data
         self.az_plot_data = az_plot_data
 ##############################################################################
     def profiles(self):
         '''
-        profiles
-
-        PURPOSE:
-            #Calculate radial and azimuthal profiles for a disk
-
-        INPUTS:
-           #filename:[str] description
-
-        AUTHOR:
-            Original in IDL: Kate Follette
-            Revised in Python: Catherine Sarosi Nov 30, 2022
+        Wrapper to call all the above functions in order.
         '''
         print(f'Current image: {self.obj} {self.imagery_type}')
 
         self.shape = (self.data.shape[1],self.data.shape[0])
         self.nPAs = len(self.PAs)
 
-        if self.override_center is not None:
-            self.xcen,self.ycen = self.override_center[0], self.override_center[1]
-
         # Shitty way to save original data plus centers before deprojection
         self.or_im, self.or_ycen = self.data, self.ycen
-        if self.deproject_data:
-            self.deproject()
+        self.deproject()
 
         self.pa_rotate()
         self.make_profiles()
