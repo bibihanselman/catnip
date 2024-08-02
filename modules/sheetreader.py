@@ -4,7 +4,7 @@ Converts any google sheet workbook into a dictionary compatible with figg.proces
 Original code written by Alex DelFranco
 Adapted by Bibi Hanselman
 Original dated 10 July 2024
-Updated 16 July 2024
+Updated 1 August 2024
 """
 
 import pandas as pd
@@ -95,10 +95,12 @@ def global_setup(wb,settings_sheet):
     wb : gspread.spreadsheet.Spreadsheet
         Google Sheets workbook instance, pulled from the desired url.
     settings_sheet : str
-        Name of settings sheet from which to pull default values. Must contain the
-        following columns:
+        Name of settings sheet from which to pull default values. To populate 
+        each dict, your sheet must contain the following columns:
+            For defaults:
             'Input': Parameters to which to assign a default value.
             'Value': Corresponding default values for the 'Input' parameters.
+            For specs:
             'Subdirectory': Subdirectories for which custom specs are desired.
             'Specs': list of columns, each representing a parameter, containing
                 default values for the corresponding subdirectories in the
@@ -119,29 +121,31 @@ def global_setup(wb,settings_sheet):
     settings_dict = sheet_extract(wb,settings_sheet)
     defaults, specs = {}, {}
   
-    # Add default information to a dictionary
-    for index,default in enumerate(settings_dict['Input']):
-        # Don't add if an default isn't specified
-        if default == '': continue
-        # Add enable switches and input values to the dictionary
-        defaults[settings_dict['Input'][index]] = settings_dict['Value'][index]
-    
-    # Add subdirectory specifications to a dictionary
-    for index,subdir in enumerate(settings_dict['Subdirectory']):
-        # Don't add if a subdir isn't specified
-        if subdir == '': continue
-        # Add all spec values as one entry in the dictionary
-        specs[subdir] = {}
-        for spec in settings_dict['Specs']:
-            # Don't add if an spec isn't specified
-            if spec == '': continue
-            try:
-                specs[subdir][spec] = settings_dict[spec][index]
-            except NameError:
-                print('Cannot pull spec values for ' + spec + 
-                      'because the column ' + spec + 'does not exist in your settings sheet!')
+    # Add default information to a dictionary, if applicable
+    if 'Input' in settings_dict and 'Value' in settings_dict:
+        for index,default in enumerate(settings_dict['Input']):
+            # Don't add if an default isn't specified
+            if default == '': continue
+            # Add enable switches and input values to the dictionary
+            defaults[settings_dict['Input'][index]] = settings_dict['Value'][index]
+        
+    # Add subdirectory specifications to a dictionary, if applicable
+    if 'Subdirectory' in settings_dict and 'Specs' in settings_dict:
+        for index,subdir in enumerate(settings_dict['Subdirectory']):
+            # Don't add if a subdir isn't specified
+            if subdir == '': continue
+            # Add all spec values as one entry in the dictionary
+            specs[subdir] = {}
+            for spec in settings_dict['Specs']:
+                # Don't add if an spec isn't specified
+                if spec == '': continue
+                try:
+                    specs[subdir][spec] = settings_dict[spec][index]
+                except NameError:
+                    print('Cannot pull spec values for ' + spec + 
+                        'because the column ' + spec + 'does not exist in your settings sheet!')
 
-    # Return the defaults dictionary
+    # Return the dicts
     return defaults, specs
 
 ######################
@@ -180,21 +184,23 @@ def addpaths(wb,im_data,namekey,settings_sheet):
             raise KeyError('No file name given for ' + im_data[namekey] + 
                            '. Please check if your sheet contains the required column "File Name".')
     else:
-        # Get the list of ordered columns from which to obtain,
-        # for each image, the subdirectory at each hierarchical tier.
-        lvls = settings_sheet['Hierarchy']
-        
-        # Declare file directory string
-        filedir = ''
-        
-        # Create the directory string based on the values in the image dictionary
-        for lvl in lvls:
-            # Check if the subdirectory column has a value - skip if it doesn't
-            if im_data[lvl] == None: continue
+        if im_data['Subdirectory Override'] is not None: filedir = im_data['Subdirectory Override']
+        else:
+            # Get the list of ordered columns from which to obtain
+            # the subdirectory at each hierarchical tier.
+            lvls = settings_sheet['Hierarchy']
             
-            # Add the subdirectory to the path
-            temp = im_data[lvl] + '/'
-            filedir += temp
+            # Declare file directory string
+            filedir = ''
+            
+            # Create the directory string based on the values in the image dictionary
+            for lvl in lvls:
+                # Check if the subdirectory column has a value - skip if it doesn't
+                if im_data[lvl] == None: continue
+                
+                # Add the subdirectory to the path
+                temp = im_data[lvl] + '/'
+                filedir += temp
         
         # Get all paths in that directory
         paths = glob.glob(filedir+'*.fit*')
@@ -235,7 +241,8 @@ def get_subdir(mockup,index,settings_sheet):
     wb : gspread.spreadsheet.Spreadsheet
         Google Sheets workbook instance, pulled from the desired Sheets interface.
     settings_sheet : dict
-        Dictionary of data pulled from a settings sheet.
+        Dictionary of data pulled from a settings sheet. MUST contain 'Hierarchy' list
+        of main sheet columns to pull from to generate subdirectory path.
 
     Returns
     -------
@@ -300,11 +307,11 @@ def wb_to_dict(wb,sheet,add_paths=False,settings_sheet=None,namekey='Object',spl
   # Add image-specific information to a main dictionary
   images = {}
   
-  # Check if dicts should be split by a splitkey. If yes, conceive the children >:)
+  # Check if dicts should be split by a splitkey. If yes, make subdicts
   if splitkey is not None:
       splitkeys = list(set(mockup[splitkey]))
       
-      # Initialize the child dicts
+      # Initialize the subdicts
       for key in splitkeys:
           images[key] = {}
           
@@ -320,9 +327,9 @@ def wb_to_dict(wb,sheet,add_paths=False,settings_sheet=None,namekey='Object',spl
       elif key in defaults:
         if defaults[key] != '': image[key] = defaults[key]
       # If it's not global, check if it's a subdirectory spec
-      # This is not elegant. Return to later. 7/14/24
-      elif settings_sheet is not None:
-        subdir = get_subdir(mockup, index, settings)
+      # This is not a nice solution. Return to later, maybe. 7/14/24
+      elif settings_sheet is not None and 'Hierarchy' in settings:
+        subdir = get_subdir(mockup, index, settings) if mockup['Subdirectory Override'][index] == '' else mockup['Subdirectory Override'][index]
         if subdir in specs:
           if key in specs[subdir]:
             image[key] = specs[subdir][key]
