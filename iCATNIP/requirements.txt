@@ -1,0 +1,14 @@
+astropy==6.1.0
+dash==2.18.2
+dash_bootstrap_components==1.6.0
+dash_extensions==1.0.20
+dash_mantine_components==0.15.1
+matplotlib==3.10.0
+numpy==2.2.2
+opencv_python==4.10.0.84
+pandas==2.2.3
+photutils==2.0.2
+plotly==5.24.1
+scipy==1.15.1
+seaborn==0.13.2
+skimage==0.0
