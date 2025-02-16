@@ -1,6 +1,6 @@
 '''
 This script contains the code needed to run the interface in a local environment.
-Version for the AAS 245 poster session, "164: Extrasolar Planets: Formation and Protoplanetary Disks I", 1/13/25.
+Demonstrated at the AAS 245 poster session, "164: Extrasolar Planets: Formation and Protoplanetary Disks I", 1/13/25.
 '''
 
 #!/usr/bin/env python
