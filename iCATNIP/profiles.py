@@ -1,11 +1,11 @@
 '''
-CATNIP: Comparative Analysis Tool for Normalized Imagery and Profiles. (Working name)
-Processes multiwavelength disk images using FIGG, and computes radial
-and azimuthal profiles according to user input.
-Original written by Cat Sarosi, 2022
+CATNIP: Comparative Analysis Tool for Normalized Imagery and Profiles.
+Generates user-selected intensity profiles for a given set of processed disk images
+and produces flexible multipanel graphics.
+Originally written by Cat Sarosi, 2022
 Modified by Bibi Hanselman
 Created 30 July 2024
-Updated 30 July 2024
+Updated 14 Feb 2025
 '''
 
 import numpy as np
