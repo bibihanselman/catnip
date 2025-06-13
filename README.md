@@ -15,8 +15,8 @@ For now, the version I demonstrated at AAS 245 may be run and tested locally.
 
 First, clone this repository and navigate to the app directory:
 ```
-git clone https://github.com/bibihanselman/CATNIP.git
-cd CATNIP/iCATNIP
+git clone https://github.com/bibihanselman/catnip.git
+cd catnip/iCATNIP
 ```
 
 Install the required dependencies:
@@ -36,6 +36,6 @@ python app.py
 ```
 
 ## FIGG-CATNIP
-The original version of CATNIP (called FIGG-CATNIP) was based on code written by Alexander DelFranco and Catherine Sarosi, two Follette Lab alumni.
+The original version of CATNIP (called FIGG-CATNIP) was based on code written by two Follette Lab alumni: Alexander DelFranco and Catherine Sarosi.
 I adapted their image processing and profiling routines to develop a sophisticated, versatile plotting backend that was operated through a Google Sheets control panel.
 The notebooks cannot be run outside of the lab's Google Drive directory.
