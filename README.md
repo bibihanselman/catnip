@@ -2,7 +2,7 @@
 ![CATNIP logo.](iCATNIP/assets/newcatniplogo.png)
 ## Introduction
 ### CATNIP is a work in progress. More detailed documentation coming soon!
-CATNIP is an interactive image analysis tool, soon to be released as a browser-based application, intended for astronomical research. CATNIP is in active development in the Follette Lab at Amherst College. 
+CATNIP is an interactive image analysis tool, soon to be released as a web application, intended for astronomical research. CATNIP is under active development in the Follette Lab at Amherst College. 
 It supports flexible image rendering, processing, and intensity profile construction to seamlessly produce multipanel graphics that facilitate the multiwavelength comparison and empirical exploration of circumstellar (planet-forming) disk substructures.
 To learn more about its capabilities, intended science purpose, and future functionality, please refer to my [AAS 245 iPoster](https://aas245-aas.ipostersessions.com/Default.aspx?s=3F-44-24-84-D2-F5-E5-2B-D7-22-BD-BF-42-BC-FD-D2).
 
