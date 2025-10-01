@@ -256,7 +256,7 @@ class AstroObject:
 
         # Create axis text
         if im.imagery_type == 'scattered light':
-            stokes_text = {'Q_phi': '$\mathcal{Q}_\phi$', 'U_phi': '$\mathcal{U}_\phi$', 'Q': '\mathcal{Q}', 'U': '\mathcal{U}', 'I': 'I', 'LP_I': 'LP_I'}
+            stokes_text = {'Q_phi': r'$\mathcal{Q}_\phi$', 'U_phi': r'$\mathcal{U}_\phi$', 'Q': r'\mathcal{Q}', 'U': r'\mathcal{U}', 'I': 'I', 'LP_I': 'LP_I'}
             im_ax.text(0.05,0.9,f'{im.band} | {stokes_text[im.stokes_component]}', color='white', fontsize = 8*self.img_mult, transform=im_ax.transAxes)
         elif im.imagery_type == 'continuum':
             im_ax.text(0.05,0.9,f'{im.band}', color='white', fontsize = 8*self.img_mult, transform=im_ax.transAxes)
