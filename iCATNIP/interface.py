@@ -33,7 +33,6 @@ import sys
 
 # My modules
 from image_preview import *
-from deproject import deproject
 import profiles
 
 # Initialize the app
