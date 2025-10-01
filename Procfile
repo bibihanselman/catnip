@@ -1,1 +1,1 @@
-web: gunicorn --chdir iCATNIP iCATNIP/interface:server --log-file -
+web: gunicorn --chdir iCATNIP interface:server --log-file -
