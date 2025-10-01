@@ -1528,7 +1528,7 @@ def generate_plot(master, master_diskwide, disk, images, pa_list, rad_list, rad_
 
 # --------------------------- RUN APP ---------------------------
 
+app = DashProxy(blueprint=bp, external_stylesheets=external_stylesheets, suppress_callback_exceptions=True)
+server = app.server
 if __name__ == '__main__':
-    app = DashProxy(blueprint=bp, external_stylesheets=external_stylesheets, suppress_callback_exceptions=True)
-    server = app.server
     app.run_server(debug=True, use_reloader=False)
