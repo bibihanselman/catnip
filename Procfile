@@ -1,1 +1,1 @@
-web: gunicorn interface:server --log-file -
+web: gunicorn iCATNIP/interface:server --log-file -
