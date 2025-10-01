@@ -2,6 +2,12 @@
 The main app file for CATNIP.
 '''
 
+import numpy as np
+import astropy.units as u
+from astropy.io import fits
+import skimage
+import math
+
 # --------------------------- APP SETUP ---------------------------
 
 from dash_extensions.enrich import (DashProxy, DashBlueprint, Output, Serverside, ServersideOutputTransform,
