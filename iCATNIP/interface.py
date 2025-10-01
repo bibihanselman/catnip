@@ -26,9 +26,9 @@ import traceback
 import sys
 
 # My modules
-from .image_preview import *
-from .deproject import deproject
-from . import profiles
+from image_preview import *
+from deproject import deproject
+import profiles
 
 # Initialize the app
 external_stylesheets = [dbc.themes.LUX] # A fitting theme :)
