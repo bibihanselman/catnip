@@ -19,15 +19,15 @@ git clone https://github.com/bibihanselman/catnip.git
 cd catnip/iCATNIP
 ```
 
-Install the required dependencies:
-```
-pip install -r requirements.txt
-```
-
 Then create and activate a new virtual environment:
 ```
 python -m venv venv
 source venv/bin/activate # Windows: venv\Scripts\activate
+```
+
+Install the required dependencies:
+```
+pip install -r requirements.txt
 ```
 
 Finally, run the app:
