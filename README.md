@@ -9,9 +9,9 @@ It supports flexible image rendering, processing, and intensity profile construc
 To learn more about its capabilities, intended science purpose, and future functionality, please refer to my [AAS 245 iPoster](https://aas245-aas.ipostersessions.com/Default.aspx?s=3F-44-24-84-D2-F5-E5-2B-D7-22-BD-BF-42-BC-FD-D2).
 
 ## iCATNIP
-This is the current version of the software, which utilizes a Dash-based GUI to support large-scale image analysis and streamline the user experience.
+This is the current version of the software, which utilizes a Plotly Dash GUI to support large-scale image analysis and streamline the user experience.
 
-### Running locally
+### Running iCATNIP on your local machine
 
 First, clone this repository and navigate to the app directory:
 ```
