@@ -1,5 +1,7 @@
 # Comparative Analysis Tool for Normalized Imagery and Profiles (CATNIP)
+The app is publicly available [here](https://catnip-interactive-947e7ff2d429.herokuapp.com/)!
 ![CATNIP logo.](iCATNIP/assets/newcatniplogo.png)
+
 ## Introduction
 ### CATNIP is a work in progress. More detailed documentation coming soon!
 CATNIP is an interactive image analysis tool, soon to be released as a web application, intended for astronomical research. CATNIP is under active development in the Follette Lab at Amherst College. 
@@ -8,10 +10,8 @@ To learn more about its capabilities, intended science purpose, and future funct
 
 ## iCATNIP
 This is the current version of the software, which utilizes a Dash-based GUI to support large-scale image analysis and streamline the user experience.
-### Getting Started
-I am currently developing more advanced features, such as polynomial fitting, to enhance the tool's utility.
-I plan to deploy the tool as a web application on a public platform in the next few months.
-For now, the version I demonstrated at AAS 245 may be run and tested locally.
+
+### Running locally
 
 First, clone this repository and navigate to the app directory:
 ```
@@ -32,10 +32,10 @@ source venv/bin/activate # Windows: venv\Scripts\activate
 
 Finally, run the app:
 ```
-python app.py
+python interface.py
 ```
 
 ## FIGG-CATNIP
 The original version of CATNIP (called FIGG-CATNIP) was based on code written by two Follette Lab alumni: Alexander DelFranco and Catherine Sarosi.
-I adapted their image processing and profiling routines to develop a sophisticated, versatile plotting backend that was operated through a Google Sheets control panel.
+I adapted their image processing and profiling routines to develop a versatile plotting backend that was operated through a Google Sheets control panel.
 The notebooks cannot be run outside of the lab's Google Drive directory.
