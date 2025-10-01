@@ -306,23 +306,7 @@ bp.layout = dmc.MantineProvider(dbc.Container([
     dcc.Store(id='master-diskwide', data={}, storage_type='local'), # For disk-wide info: pa, incl, distance, PAlist (rad), radlist (az)
     dcc.Store(id='last-index', storage_type='local'), # Trigger for updating layout (only want to update after upload or deleting panel).
     dcc.Download(id='download'), # Where files will be downloaded!
-    
-    # Clear persistence button (testing)
-    dbc.Button('Clear Persistence', id='persistence-clear')
 ], fluid=True))
-
-# Clearing persistent values (for testing)
-@bp.callback(
-    Output('master', 'data'),
-    Output('master-diskwide', 'data'),
-    Output('last-index', 'data'),
-    Input('persistence-clear', 'n_clicks'),
-    prevent_initial_call=True
-)
-def clear_persistence(n_clicks):
-    if not n_clicks:
-        raise PreventUpdate
-    return {}, {}, []
 
 # --------------------------- SUBMIT FILE ---------------------------
 
@@ -539,8 +523,8 @@ def submit_file(n, contents, name, tag, tracer, instr, master, master_diskwide):
         master[name] = {}
         master_diskwide[name] = {
             'Name': name,
-            'PA': None,
-            'Inclination': None,
+            'PA': 0,
+            'Inclination': 0,
             'Distance': GLOBALS['distance'], #Simbad query? 12/11/24
             'PA List': [],
             'Radius List': [],
